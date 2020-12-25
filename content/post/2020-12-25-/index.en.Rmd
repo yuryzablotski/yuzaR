@@ -29,18 +29,18 @@ projects: []
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, fig.path = "static")
+knitr::opts_chunk$set(echo = TRUE)
 library(readxl)
 library(tidyverse)
 library(janitor)
 library(survminer)
 library(survival)
-#library(sjPlot)
+library(sjPlot)
 library(RVAideMemoire) 
 library(effects)
 library(emmeans)
 library(knitr)
-library(gt)
+library(gt) 
 ```
 
 If you are more of a visual person, you can [watch this post on YouTube](https://www.youtube.com/watch?v=TWyQVtchcpc&ab_channel=YuryZablotski), but for more details and R-code stay here.
