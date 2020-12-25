@@ -1,5 +1,5 @@
 ---
-title: ''
+title: 'The first post'
 author: Yury Zablotski
 date: '2020-12-25'
 slug: ''
