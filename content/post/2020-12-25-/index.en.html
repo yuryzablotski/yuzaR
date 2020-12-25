@@ -1,38 +1,991 @@
 ---
-title: 'The first post'
+title: "Survival analysis 1: a gentle introduction into Kaplan-Meier Curves"
 author: Yury Zablotski
-date: '2020-12-25'
-slug: ''
+date: '2020-06-17'
+slug: survival
 categories:
   - R
 tags:
-  - R Demo
+  - modelling
+  - regression
+  - statistics
+  - videos
+output:
+  blogdown::html_page:
+    toc: true
+    toc_depth: 5
+featuredImage: "featured.jpg"
 subtitle: ''
 summary: ''
-authors: []
-lastmod: '2020-12-25T16:15:18+01:00'
+authors: ["admin"]
+lastmod: '2019-12-31T08:38:26+01:00'
 featured: no
 image:
   caption: ''
   focal_point: ''
-  preview_only: no
+  preview_only: yes
 projects: []
+
 ---
 
 
+<div id="TOC">
+<ul>
+<li><a href="#previous-topics">Previous topics</a></li>
+<li><a href="#why-do-we-need-survival-analysis">Why do we need survival analysis?</a><ul>
+<li><a href="#death-is-not-the-only-option-or-what-is-an-event">Death is not the only option! Or: “What is an event?”</a></li>
+<li><a href="#censoring">Censoring</a></li>
+</ul></li>
+<li><a href="#how-to-calculate-kaplan-meier-survival-curve-manually-step-by-step">How to calculate Kaplan-Meier survival curve “manually” step by step</a><ul>
+<li><a href="#survival-probability">Survival probability</a></li>
+</ul></li>
+<li><a href="#how-to-compute-kaplan-meier-survival-curve">How to compute Kaplan-Meier survival curve</a><ul>
+<li><a href="#interpretation-of-kaplan-meier-curve">Interpretation of Kaplan-Meier Curve</a></li>
+</ul></li>
+<li><a href="#comparing-survival-of-groups">Comparing survival of groups</a><ul>
+<li><a href="#groups">2 groups</a></li>
+<li><a href="#interpretation-of-groups-comparison-using-4-benchmarks">Interpretation of groups comparison using 4 benchmarks</a></li>
+<li><a href="#log-rank-test">Log-Rank test</a></li>
+<li><a href="#groups-and-multiple-pairwise-post-hoc-log-rank-test">&gt; 2 groups and multiple pairwise (post-hoc) Log-Rank test</a></li>
+<li><a href="#multiple-survival-curves">Multiple survival curves</a></li>
+</ul></li>
+<li><a href="#conclusions">Conclusions</a></li>
+<li><a href="#whats-next">What’s next?</a></li>
+<li><a href="#further-readings-videos-and-references">Further readings, videos and references</a></li>
+</ul>
+</div>
 
-<p>The first post with some analysis</p>
-<pre class="r"><code>library(tidyverse)</code></pre>
-<pre><code>## ── Attaching packages ─────────────────────────────────────── tidyverse 1.3.0 ──</code></pre>
-<pre><code>## ✓ ggplot2 3.3.2     ✓ purrr   0.3.4
-## ✓ tibble  3.0.4     ✓ dplyr   1.0.2
-## ✓ tidyr   1.1.2     ✓ stringr 1.4.0
-## ✓ readr   1.4.0     ✓ forcats 0.5.0</code></pre>
-<pre><code>## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
-## x dplyr::filter() masks stats::filter()
-## x dplyr::lag()    masks stats::lag()</code></pre>
-<pre class="r"><code>ggplot(mtcars, aes(mpg, hp))+
-  geom_point()+
-  geom_smooth()</code></pre>
-<pre><code>## `geom_smooth()` using method = &#39;loess&#39; and formula &#39;y ~ x&#39;</code></pre>
-<p><img src="{{< relref "post/2020-12-25-/index.en.html" >}}index.en_files/figure-html/unnamed-chunk-1-1.png" width="672" /></p>
+<p>If you are more of a visual person, you can <a href="https://www.youtube.com/watch?v=TWyQVtchcpc&amp;ab_channel=YuryZablotski">watch this post on YouTube</a>, but for more details and R-code stay here.</p>
+<p><img src="titanic.jpg" /></p>
+<p><a href="https://wallpapersafari.com/titanic-wallpapers-free-download/">Source</a></p>
+<p>Can there be something more horrifying, then a Titanic crash with lots of immediate deaths? Well, unfortunately, yes! Namely, not immediate deaths. Imagine survived people in the middle of the cold dark ocean, some in life jackets, some without, clinging on ship remains, with a huge panic and little hope for rescue. There will be no helicopter to save them (it’s 1912). There might not be a single ship in those waters for months. <strong>How long will they survive?</strong> Will <strong>time</strong> simply prolong their suffering or increase the probability of survival, because eventually they will be found by some random ship? Do women have higher chances of survival then men? What about rich vs. pure passengers? Well, in this post we’ll find answers to all of these questions and along the way learn how survival analysis works. Particularly, we will:</p>
+<ul>
+<li><strong>learn</strong> about the most <strong>important concepts</strong> of survival analysis: survival curve, censoring and log-rank test,</li>
+<li>manually <strong>calculate</strong>, then <strong>compute</strong> and <strong>interpret</strong> survival curves, and</li>
+<li><strong>test survival differences</strong> between two or more groups, e.g. females vs. males</li>
+</ul>
+<div id="previous-topics" class="section level2">
+<h2>Previous topics</h2>
+<p>A good understanding of <a href="https://yury-zablotski.netlify.com/post/simple-linear-regression/">linear</a> and <a href="https://yury-zablotski.netlify.com/post/how-logistic-regression-works/">logistic</a> regressions would improve the digestion of this post.</p>
+</div>
+<div id="why-do-we-need-survival-analysis" class="section level2">
+<h2>Why do we need survival analysis?</h2>
+<pre class="r"><code>library(tidyverse)
+
+d &lt;- tibble(
+  time   = c(1,1,1,2,2,3,4,5,7,10), 
+  status = c(1,1,1,1,0,1,0,0,1,0)
+)
+
+d %&gt;% gt()</code></pre>
+<style>html {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', 'Fira Sans', 'Droid Sans', Arial, sans-serif;
+}
+
+#lxqvtfvlmc .gt_table {
+  display: table;
+  border-collapse: collapse;
+  margin-left: auto;
+  margin-right: auto;
+  color: #333333;
+  font-size: 16px;
+  font-weight: normal;
+  font-style: normal;
+  background-color: #FFFFFF;
+  width: auto;
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #A8A8A8;
+  border-right-style: none;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #A8A8A8;
+  border-left-style: none;
+  border-left-width: 2px;
+  border-left-color: #D3D3D3;
+}
+
+#lxqvtfvlmc .gt_heading {
+  background-color: #FFFFFF;
+  text-align: center;
+  border-bottom-color: #FFFFFF;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+}
+
+#lxqvtfvlmc .gt_title {
+  color: #333333;
+  font-size: 125%;
+  font-weight: initial;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  border-bottom-color: #FFFFFF;
+  border-bottom-width: 0;
+}
+
+#lxqvtfvlmc .gt_subtitle {
+  color: #333333;
+  font-size: 85%;
+  font-weight: initial;
+  padding-top: 0;
+  padding-bottom: 4px;
+  border-top-color: #FFFFFF;
+  border-top-width: 0;
+}
+
+#lxqvtfvlmc .gt_bottom_border {
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+}
+
+#lxqvtfvlmc .gt_col_headings {
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+}
+
+#lxqvtfvlmc .gt_col_heading {
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: normal;
+  text-transform: inherit;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+  vertical-align: bottom;
+  padding-top: 5px;
+  padding-bottom: 6px;
+  padding-left: 5px;
+  padding-right: 5px;
+  overflow-x: hidden;
+}
+
+#lxqvtfvlmc .gt_column_spanner_outer {
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: normal;
+  text-transform: inherit;
+  padding-top: 0;
+  padding-bottom: 0;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+#lxqvtfvlmc .gt_column_spanner_outer:first-child {
+  padding-left: 0;
+}
+
+#lxqvtfvlmc .gt_column_spanner_outer:last-child {
+  padding-right: 0;
+}
+
+#lxqvtfvlmc .gt_column_spanner {
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  vertical-align: bottom;
+  padding-top: 5px;
+  padding-bottom: 6px;
+  overflow-x: hidden;
+  display: inline-block;
+  width: 100%;
+}
+
+#lxqvtfvlmc .gt_group_heading {
+  padding: 8px;
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: initial;
+  text-transform: inherit;
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+  vertical-align: middle;
+}
+
+#lxqvtfvlmc .gt_empty_group_heading {
+  padding: 0.5px;
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: initial;
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  vertical-align: middle;
+}
+
+#lxqvtfvlmc .gt_from_md > :first-child {
+  margin-top: 0;
+}
+
+#lxqvtfvlmc .gt_from_md > :last-child {
+  margin-bottom: 0;
+}
+
+#lxqvtfvlmc .gt_row {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  margin: 10px;
+  border-top-style: solid;
+  border-top-width: 1px;
+  border-top-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+  vertical-align: middle;
+  overflow-x: hidden;
+}
+
+#lxqvtfvlmc .gt_stub {
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: initial;
+  text-transform: inherit;
+  border-right-style: solid;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+  padding-left: 12px;
+}
+
+#lxqvtfvlmc .gt_summary_row {
+  color: #333333;
+  background-color: #FFFFFF;
+  text-transform: inherit;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+#lxqvtfvlmc .gt_first_summary_row {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+}
+
+#lxqvtfvlmc .gt_grand_summary_row {
+  color: #333333;
+  background-color: #FFFFFF;
+  text-transform: inherit;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+#lxqvtfvlmc .gt_first_grand_summary_row {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-top-style: double;
+  border-top-width: 6px;
+  border-top-color: #D3D3D3;
+}
+
+#lxqvtfvlmc .gt_striped {
+  background-color: rgba(128, 128, 128, 0.05);
+}
+
+#lxqvtfvlmc .gt_table_body {
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+}
+
+#lxqvtfvlmc .gt_footnotes {
+  color: #333333;
+  background-color: #FFFFFF;
+  border-bottom-style: none;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 2px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+}
+
+#lxqvtfvlmc .gt_footnote {
+  margin: 0px;
+  font-size: 90%;
+  padding: 4px;
+}
+
+#lxqvtfvlmc .gt_sourcenotes {
+  color: #333333;
+  background-color: #FFFFFF;
+  border-bottom-style: none;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 2px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+}
+
+#lxqvtfvlmc .gt_sourcenote {
+  font-size: 90%;
+  padding: 4px;
+}
+
+#lxqvtfvlmc .gt_left {
+  text-align: left;
+}
+
+#lxqvtfvlmc .gt_center {
+  text-align: center;
+}
+
+#lxqvtfvlmc .gt_right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+#lxqvtfvlmc .gt_font_normal {
+  font-weight: normal;
+}
+
+#lxqvtfvlmc .gt_font_bold {
+  font-weight: bold;
+}
+
+#lxqvtfvlmc .gt_font_italic {
+  font-style: italic;
+}
+
+#lxqvtfvlmc .gt_super {
+  font-size: 65%;
+}
+
+#lxqvtfvlmc .gt_footnote_marks {
+  font-style: italic;
+  font-size: 65%;
+}
+</style>
+<div id="lxqvtfvlmc" style="overflow-x:auto;overflow-y:auto;width:auto;height:auto;"><table class="gt_table">
+  
+  <thead class="gt_col_headings">
+    <tr>
+      <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1">time</th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1">status</th>
+    </tr>
+  </thead>
+  <tbody class="gt_table_body">
+    <tr>
+      <td class="gt_row gt_right">1</td>
+      <td class="gt_row gt_right">1</td>
+    </tr>
+    <tr>
+      <td class="gt_row gt_right">1</td>
+      <td class="gt_row gt_right">1</td>
+    </tr>
+    <tr>
+      <td class="gt_row gt_right">1</td>
+      <td class="gt_row gt_right">1</td>
+    </tr>
+    <tr>
+      <td class="gt_row gt_right">2</td>
+      <td class="gt_row gt_right">1</td>
+    </tr>
+    <tr>
+      <td class="gt_row gt_right">2</td>
+      <td class="gt_row gt_right">0</td>
+    </tr>
+    <tr>
+      <td class="gt_row gt_right">3</td>
+      <td class="gt_row gt_right">1</td>
+    </tr>
+    <tr>
+      <td class="gt_row gt_right">4</td>
+      <td class="gt_row gt_right">0</td>
+    </tr>
+    <tr>
+      <td class="gt_row gt_right">5</td>
+      <td class="gt_row gt_right">0</td>
+    </tr>
+    <tr>
+      <td class="gt_row gt_right">7</td>
+      <td class="gt_row gt_right">1</td>
+    </tr>
+    <tr>
+      <td class="gt_row gt_right">10</td>
+      <td class="gt_row gt_right">0</td>
+    </tr>
+  </tbody>
+  
+  
+</table></div>
+<p>To answer this question, let’s start with a small example of Titanic survivors: only 10 people and only 10 days on the sea after the crash and analyse it with the classic statistical methods, linear and logistic regressions. We are interested in how many people and how long survived and how many died on a particular day. Thus, <strong>two main parameters of interest</strong> for us are (1) <strong>time</strong> (in days) and (2) “<strong>life-status</strong>” of people, where “status = 1” means death and “status = 0” means not-death. And having the status of people we could just have counted survivors and not-survivors at each particular day to understand what was going on, wright?</p>
+<pre class="r"><code>ggplot(d, aes(time, fill = factor(status)))+
+  geom_bar(position = position_dodge())+
+  theme_bw()</code></pre>
+<p><img src="staticunnamed-chunk-2-1.png" width="672" /></p>
+<p>Well, not quite. Besides, the fact that the plot with our counts is not particularly revealing, we have <strong>two problems</strong> with that:</p>
+<ol style="list-style-type: decimal">
+<li><p>The first one is that “status = 0” does not always mean a survival. First, the person might be carried away by the waves and disappear. We lost the person and we don’t know it’s status. It might have died, it might have been saved by a fisher boat or is still alive somewhere in the ocean. We are not sure. The only thing what we are sure about is that this person <strong>can not be counted as dead or survived</strong>. Secondly, if some people survived 10 days, they might die at day 11. So, the time plays a role here and brings us to the second problem.</p></li>
+<li><p>We do not have the data for every of these 10 days. Only for 7. Moreover, if I did not eat anything for 5 days, my survival probability at day 5, where I certainly survived, is not 100%. It is lower, because hunger <strong>accumulates over time</strong>. Similarly, a decrease of my survival probability also <strong>accumulates over time</strong>, which can not be determined by a simple counting of survivors vs. not-survivors at a particular day.</p></li>
+</ol>
+<p>Despite this problems we still can analyse these data. We only <strong>need to find the right method</strong> for it.</p>
+<ol style="list-style-type: decimal">
+<li>Looking at the numeric variable “time”, we might be tempted to use a linear regression to model the survival time for two different status groups, 0 &amp; 1:</li>
+</ol>
+<pre class="r"><code>m &lt;- lm(time ~ status, d %&gt;% mutate(status = factor(status)))
+
+library(effects)
+plot(allEffects(m))</code></pre>
+<p><img src="staticunnamed-chunk-3-1.png" width="672" /></p>
+<p>But when we plot the model results, we realize that something isn’t quite right there. All the information we have to model the survival time are zeros and ones. And the average time of dying (status = 1) of 2.5 days misses lot’s of information. For instance, half of the people (3 persons) died on the very first day! And the further we go in time, the less additional people die, which we can see on the very first counts-plot above. So, the survival time is not really linear and can certainly not be described with only zeros and ones! Thus, a linear model does not seem to be useful here. Then what is?</p>
+<ol start="2" style="list-style-type: decimal">
+<li>Since we have zeros and ones in the status column we can use a logistic regression, right?! Yes! Especially because probability curve is not linear and will catch the trend of survival over time. Cool! Let’s go with it:</li>
+</ol>
+<pre class="r"><code>m &lt;- glm(status ~ time, d, family = binomial)
+
+library(sjPlot)
+plot_model(m, type = &quot;pred&quot;, ci.lvl = NA)</code></pre>
+<pre><code>## $time</code></pre>
+<p><img src="staticunnamed-chunk-4-1.png" width="672" /></p>
+<p>Now we have the non-linear survival probabilities :), which is a great improvement as compared to a linear regression. However, the fifth observation has a status of 0 at day 2. This means that the person survived for 2 days for sure, but was lost after it. “So what?”, - you might ask. The probabilities in logistic regression would count this person as a 100% survivor after the second day simply because it’s status is not “=1”, which is wrong (or biased), since we don’t know whether this person survived. Thus, logistic regression overestimates survival probability and is therefore also an inappropriate tool to analyze survival data.</p>
+<p>So, it looks like we can’t analyse <strong>survival data</strong> with classic methods. And that is exactly why we need survival analysis method.</p>
+<p>While linear regression models describe the time, but miss a non-linear survival probability, logistic regression catches a non-linear trend, but overestimates survival probability. In contrast, <strong>survival analysis</strong> solves both issues, since it models non-linear survival probabilities over time while accounting for lost subjects of the study which are either dead nor survived.</p>
+<div id="death-is-not-the-only-option-or-what-is-an-event" class="section level3">
+<h3>Death is not the only option! Or: “What is an event?”</h3>
+<p><img src="death.jpeg" /></p>
+<p>Image by Luke Southern on unsplash.</p>
+<p><strong>Survival time analysis</strong> is necessary in any study which investigates <strong>the time to a particular outcome of interest</strong>. Cancer studies in the medicine and the first failure of the car in the engineering field (<strong>failure time analysis</strong>) are good examples. The <strong>outcome of interest</strong> could be death, remission to relapse, progression, or failure. Point in time of reaching that outcome is generally called the <strong>event</strong>. Thank goodness, not every “event” is fatal 😃, but can sometimes even be a favorable outcome
+such as discharge from hospital. And thus, survival analysis is also a generic term, because it is not only about survival.</p>
+<p><strong>The event, as a final fixed point in time is needed</strong> because we can’t observe or experiment forever. If we study lung cancer, we can’t wait until patients die from other causes, e.g. being old. Only when some of patients survive cancer, or some cars don’t break by a <strong>certain time (event)</strong>, we can get valuable insights. For instance, what is the time from the start of the treatment to progression, or what is the probability to survive lung cancer after exactly 1 year? Moreover, it opens the possibility to compare survival or failure times among different groups, e.g. lung cancer between smokers and non-smokers, or breakdown time between German and Korean cars.</p>
+<p>So, the <strong>survival time</strong> has a start and a finish point - <strong>the event</strong>. But what if a patient withdraw from the study due to a personal reasons, or a car got stolen 1 day before the event? Will they “survive” by the time of the event? We don’t know! But they certainly survived from the start of the study until the point we lost them. And this is a valuable information we surely want to include in our analysis! But how do we differentiate “lost” survivors from the “real” survivors? Well, we just call them a new name - <strong>censored</strong>. Strаnge word to apply to a person, right? But as I thought about the <strong>inappropriate</strong> information in a book or swearing on TV, which is often <strong>getting censored</strong>, the concept of censoring a patient became more digestible to me. See, since we can not say that person has died or is still alive, simply because we <strong>DO NOT HAVE ENOUGH INFORMATION</strong>, both of conclusions would be <strong>inappropriate</strong>, and thus, we <strong>censor</strong> this person. The concept of <strong>censoring</strong> is so important, that it deserves an extra chapter.</p>
+</div>
+<div id="censoring" class="section level3">
+<h3>Censoring</h3>
+<div class="alert alert-success" role="alert">
+<p>The need for censoring arises from the fact that the actual survival times will be unknown for some individuals. There are lots of ways to loose a subject of study:</p>
+<ul>
+<li>we can loose an individual for no reason, when it simply does not appear anymore</li>
+<li>the individual may experience another event, e.g. death or accident</li>
+<li>even patients who survived till the very end of the study can be treated as censored due the unknown survival time (I personally prefer to see these patients as <strong>survived</strong>)</li>
+</ul>
+<p>All examples above are considered to be <strong>right censoring</strong> due to their direction from left to right on the time-axes. Most of survival data are right censored. There are two other kinds of censoring. <strong>Left censoring</strong> appears if we do not know where the sickness began, while <strong>interval censoring</strong> happens when the exact time of patient loss is not known, but only a time window. Both left and interval censorings are rare, difficult to analyse, are often a result of a bad study design, and thus, will not be covered here.</p>
+<p>Important to remember is that <strong>censored observations still provide useful information! That is why they need to be included into analysis</strong>.</p>
+</div>
+</div>
+</div>
+<div id="how-to-calculate-kaplan-meier-survival-curve-manually-step-by-step" class="section level2">
+<h2>How to calculate Kaplan-Meier survival curve “manually” step by step</h2>
+<p>Imagine a peaceful sunny <strong>day right before the Titanic crash</strong>. No one has died, but all 10 people are at high risk (hazard) of death, they just don’t know it yet. Guess, how many people would probably die the day before the crash? The answer is - <strong>probably</strong> zero. Literally, the probability of dying is zero, because we know the crash will not happen the day before the actual crush. To answer this question more properly, we need to remember the definition of probability: <strong>Probabilities are ratios of something happening, to everything what can happen.</strong> Thus, if nobody out of all 10 people died the day before the crash, the probability of dying is 0%, while the probability of surviving is 100%:</p>
+<p><span class="math display">\[ probability \ of \ dying = \frac{0}{10} = 0\]</span></p>
+<p><span class="math display">\[ probability \ of \ surviving = \frac{10}{10} = 1  = 100\%\]</span></p>
+<p>For a better representation, let’s put all the numbers in one single table:</p>
+<pre class="r"><code>tribble(
+  ~time_in_days, ~N_at_risk, ~N_died, ~P_dying, ~`P_surviving`,
+  0, 10, 0, &quot;0/10 = 0&quot;, &quot;10/10 = 1&quot;
+) %&gt;% kable()</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="right">time_in_days</th>
+<th align="right">N_at_risk</th>
+<th align="right">N_died</th>
+<th align="left">P_dying</th>
+<th align="left">P_surviving</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="right">0</td>
+<td align="right">10</td>
+<td align="right">0</td>
+<td align="left">0/10 = 0</td>
+<td align="left">10/10 = 1</td>
+</tr>
+</tbody>
+</table>
+<p>Then, at the <strong>day of the crash</strong>, where all 10 people are now know that they are at high risk of dying, 3 of them have actually died. The probability of dying at the first day is then <span class="math inline">\(3/10 = 0.3 \approx 30\%\)</span> and the probability of surviving is <span class="math inline">\(7/10 = 0.7 \approx 70\%\)</span>. As you can see, the survival can be also calculated from the probability of dying <span class="math inline">\(1-0.3 = 0.7\)</span>, which is sometimes very useful.</p>
+<div id="survival-probability" class="section level3">
+<h3>Survival probability</h3>
+<div class="alert alert-success" role="alert">
+<p>One important moment here is that <strong>the probability of surviving is cumulative</strong>, which means it <strong>accumulates</strong> day by day. This accumulation happens via <strong>multiplying</strong> the <strong>new probability</strong> of surviving day 1 <span class="math inline">\((1 - \frac{d_i}{n_i}) = (1 - \frac{3}{10}) = 70\%\)</span> by the <strong>old probability</strong> of surviving all the time before, which in our case is the day before the accident, or - day zero <span class="math inline">\(S(t_{i-1}) = 100\%\)</span>:</p>
+<p><span class="math display">\[ S(t_i) = S(t_{i-1})*(1 - \frac{d_i}{n_i}) = 1 * (1 - \frac{3}{10}) = 0.7 \]</span></p>
+<p>Where,</p>
+<ul>
+<li><span class="math inline">\(S(t_{i−1})\)</span> = the probability of being alive at <span class="math inline">\(t_{i−1}\)</span></li>
+<li><span class="math inline">\(n_i\)</span> = the number of patients alive just before <span class="math inline">\(t_i\)</span></li>
+<li><span class="math inline">\(d_i\)</span> = the number of events at <span class="math inline">\(t_i\)</span></li>
+<li><span class="math inline">\(t_0\)</span> = 0, <span class="math inline">\(S(0)\)</span> = 1</li>
+</ul>
+<p>The survival probability at a certain time, <span class="math inline">\(S(t)\)</span>, is <strong>conditional</strong> because the person <strong>needs to have survived beyond that certain time</strong>, e.g. the zero day (that’s the condition) in order to remain in the experiment for the first day.</p>
+</div>
+<pre class="r"><code>tribble(
+  ~time_in_days, ~N_at_risk, ~N_died, ~P_dying, ~`P_surviving`,
+  0, 10, 0, &quot;0/10 = 0&quot;,   &quot;10/10      = 1&quot;,
+  1, 10, 3, &quot;3/10 = 0.3&quot;, &quot;1 * (7/10) = 0.7&quot;,
+) %&gt;% kable()</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="right">time_in_days</th>
+<th align="right">N_at_risk</th>
+<th align="right">N_died</th>
+<th align="left">P_dying</th>
+<th align="left">P_surviving</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="right">0</td>
+<td align="right">10</td>
+<td align="right">0</td>
+<td align="left">0/10 = 0</td>
+<td align="left">10/10 = 1</td>
+</tr>
+<tr class="even">
+<td align="right">1</td>
+<td align="right">10</td>
+<td align="right">3</td>
+<td align="left">3/10 = 0.3</td>
+<td align="left">1 * (7/10) = 0.7</td>
+</tr>
+</tbody>
+</table>
+<p>The <strong>second day</strong> is a little more interesting, because one person died and one simply disappeared (status = 0). This lost person was most likely carried away by the waves and hopefully was rescued. The hope is big, because the further people are scattered in the ocean, the higher the chances are that one of them will be found alive. And this one will let the world know that others are still out there. So, despite the fact that missing person seems bad, it might turn out to be a good thing. So, we certainly can not count a missed person as - dead. Besides, as a German proverb says: “Hope is the last to die” 😉.</p>
+<p>But since we are also not sure whether this person is still alive, we can’t say - the person survived. That produces a dilemma: despite not being dead, the person is not part of our experiment anymore and we have to remove it from the number of people at risk. So, while the <strong>second day</strong> would have 7 people at risk left (since 3 have died at the very first day), the <strong>third day</strong> would be left with only 5 people, because 1 person died and one disappeared (was censored) as compared to day two. Similarly to the first day, the survival probability is cumulative and always includes the probability of the day before.</p>
+<pre class="r"><code>tribble(
+  ~time_in_days, ~N_at_risk, ~N_died, ~P_dying, ~`P_surviving`,
+  0, 10, 0, &quot;0/10 = 0&quot;,    &quot;10/10       = 1&quot;,
+  1, 10, 3, &quot;3/10 = 0.3&quot;,  &quot;1 * (7/10)  = 0.7&quot;,
+  2, 7,  1, &quot;1/7  = 0.14&quot;, &quot;0.7 * (6/7) = 0.6&quot;,
+  3, 5,  1, &quot;1/5  = 0.20&quot;, &quot;0.6 * (4/5) = 0.48&quot;
+) %&gt;% kable()</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="right">time_in_days</th>
+<th align="right">N_at_risk</th>
+<th align="right">N_died</th>
+<th align="left">P_dying</th>
+<th align="left">P_surviving</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="right">0</td>
+<td align="right">10</td>
+<td align="right">0</td>
+<td align="left">0/10 = 0</td>
+<td align="left">10/10 = 1</td>
+</tr>
+<tr class="even">
+<td align="right">1</td>
+<td align="right">10</td>
+<td align="right">3</td>
+<td align="left">3/10 = 0.3</td>
+<td align="left">1 * (7/10) = 0.7</td>
+</tr>
+<tr class="odd">
+<td align="right">2</td>
+<td align="right">7</td>
+<td align="right">1</td>
+<td align="left">1/7 = 0.14</td>
+<td align="left">0.7 * (6/7) = 0.6</td>
+</tr>
+<tr class="even">
+<td align="right">3</td>
+<td align="right">5</td>
+<td align="right">1</td>
+<td align="left">1/5 = 0.20</td>
+<td align="left">0.6 * (4/5) = 0.48</td>
+</tr>
+</tbody>
+</table>
+<p>The <strong>next two days</strong> two people disappeared, so, we censor them. There is no need to calculate something for censored data in survival analysis, because we don’t know whether they survived or not. And since we are interested in either survival or death, the final table below contains <strong>only dead</strong> cases. At <strong>day 6</strong> nobody died or disappeared, that is why we do not calculate anything for that day either. The last person in our experiment died at <strong>day 7</strong>. So, “N_died” will be 1, and “N_at_risk” will be 2, since 1 out of remaining 5 has died and 2 were censored. Thus, the full “manually” calculated table will look like this:</p>
+<pre class="r"><code>tribble(
+  ~time_in_days, ~N_at_risk, ~N_died, ~P_dying, ~`P_surviving`,
+  0, 10, 0, &quot;0/10 = 0&quot;,    &quot;10/10        = 1&quot;,
+  1, 10, 3, &quot;3/10 = 0.3&quot;,  &quot;1 * (7/10)   = 0.7&quot;,
+  2, 7,  1, &quot;1/7  = 0.14&quot;, &quot;0.7 * (6/7)  = 0.6&quot;,
+  3, 5,  1, &quot;1/5  = 0.20&quot;, &quot;0.6 * (4/5)  = 0.48&quot;,
+  7, 2,  1, &quot;1/2  = 0.50&quot;, &quot;0.48 * (1/2) = 0.24&quot;
+) %&gt;% kable()</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="right">time_in_days</th>
+<th align="right">N_at_risk</th>
+<th align="right">N_died</th>
+<th align="left">P_dying</th>
+<th align="left">P_surviving</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="right">0</td>
+<td align="right">10</td>
+<td align="right">0</td>
+<td align="left">0/10 = 0</td>
+<td align="left">10/10 = 1</td>
+</tr>
+<tr class="even">
+<td align="right">1</td>
+<td align="right">10</td>
+<td align="right">3</td>
+<td align="left">3/10 = 0.3</td>
+<td align="left">1 * (7/10) = 0.7</td>
+</tr>
+<tr class="odd">
+<td align="right">2</td>
+<td align="right">7</td>
+<td align="right">1</td>
+<td align="left">1/7 = 0.14</td>
+<td align="left">0.7 * (6/7) = 0.6</td>
+</tr>
+<tr class="even">
+<td align="right">3</td>
+<td align="right">5</td>
+<td align="right">1</td>
+<td align="left">1/5 = 0.20</td>
+<td align="left">0.6 * (4/5) = 0.48</td>
+</tr>
+<tr class="odd">
+<td align="right">7</td>
+<td align="right">2</td>
+<td align="right">1</td>
+<td align="left">1/2 = 0.50</td>
+<td align="left">0.48 * (1/2) = 0.24</td>
+</tr>
+</tbody>
+</table>
+<p>But what happens <strong>if we ignore censoring</strong> and simply calculate the probability of being not dead? Well, since 4 people did not die on day 7, the probability of survival would be <span class="math inline">\(\frac{4}{10} = 40\%\)</span> which is almost twice as high, and thus <strong>we’ll massively overestimate survival probability</strong>, as compared to the actual probability of 0.24 which accounts for censoring!</p>
+<div class="alert alert-info" role="alert">
+<p><strong>Story time:</strong></p>
+<p><img src="Survivorship-bias.png" /></p>
+<p><a href="https://de.wikipedia.org/wiki/Survivorship_Bias">Source</a></p>
+<p><strong>Only paying attention to survivors</strong> even has a name - <strong>survivorship bias</strong>, and there is a small story to it. During the Second World War some planes came back from the battle field with a lot of damage from bullets. They barely could fly, but they still came back. So, the military decided to protect the aircraft with more armor at the places where the most bullet-holes were, like wings, and reduce the armor at the places with no bullet-holes. Surprisingly, the percentage of planes which came back did not increase. The engineers were puzzled! Until one mathematician, Abraham Walt, which were invited to solve this problem said: “Put more armor on places with no bullet-holes, because if these place are shot, the plane won’t come back.” And as the others thought about it, they realized that all the planes which came back did not have any bullet-holes on the cockpit or the engines. The bullet-holes shows all the places where the aircraft can be shot but still come back, or survive! That is the <strong>survivorship bias</strong>. So, it seems to me, that logistic regression has a <strong>survivorship bias</strong> as compared to the survival analysis if we wanna analyse survival data.</p>
+</div>
+</div>
+</div>
+<div id="how-to-compute-kaplan-meier-survival-curve" class="section level2">
+<h2>How to compute Kaplan-Meier survival curve</h2>
+<p>Load all needed packages at once to avoid interruptions.</p>
+<pre class="r"><code>library(tidyverse)  # data wrangling and visualization
+library(knitr)      # beautifying tables
+library(car)        # for checking assumptions, e.g. vif etc.
+library(broom)      # for tidy model output
+library(sjPlot)     # for plotting results of log.regr.
+library(sjmisc)     # for plotting results of log.regr.
+library(effects)    # for probability output and plots</code></pre>
+<p>First of all, please, be sure you know exactly what 0s and 1s in your data mean! Because in a <em>logistic regression</em> 1 is the survival, while in a <em>survival analysis</em> 1 is death! Secondly, we have to differentiate censored cases somehow, e.g. we can mark them with a <strong>plus sign</strong> in the data or on the plot. The data below shows that people were censored on days 2+, 4+, 5+ and 10+. Install and load a <code>survival</code> package to be able to execute the code below:</p>
+<pre class="r"><code># install.packages(&quot;survival&quot;)
+library(survival)
+
+Surv(time = d$time, event = d$status)</code></pre>
+<pre><code>##  [1]  1   1   1   2   2+  3   4+  5+  7  10+</code></pre>
+<p>The <code>Surv</code> function unites “time” and “status” data into a single <strong>“survival” object</strong>, which allows to <strong>account for censored observations</strong>. This object can then be used to model survival probability by the <code>survfit</code> function. We model the survival by adding “~ 1” to the object, where 1 means <em>no variables</em> which could have influenced the survival. Our survival object on the left side of the <em>tilde</em> is then the response variable and on the right site of the ~ (<em>tilde</em>) are predictors, or in our case of “1” - nothing. Let’s produce our fist survival model and have a look at the model output:</p>
+<pre class="r"><code>survival_model &lt;- survfit(Surv(time, status) ~ 1, data = d)
+
+# small summary
+survival_model</code></pre>
+<pre><code>## Call: survfit(formula = Surv(time, status) ~ 1, data = d)
+## 
+##       n  events  median 0.95LCL 0.95UCL 
+##      10       6       3       1      NA</code></pre>
+<p>where we have:</p>
+<ul>
+<li><strong>n</strong> - number of participants,</li>
+<li><strong>events</strong> - number of deaths, which are generically called <strong>event</strong> since you can study other types of “<strong>dead</strong>lines” 😂, like relapse of the sickness, or first break of the car,</li>
+<li>the <strong>median</strong> survival time estimated instead of the mean due to a non-parametric (explained later) nature of survival analysis and</li>
+<li><strong>95% confidence intervals</strong> for the median survival time</li>
+</ul>
+<p>Much more information can be assessed by the <code>summary</code> function, which, surprisingly 😉, delivers the same table which we just calculated above manually:</p>
+<pre class="r"><code># big summary
+summary(survival_model)</code></pre>
+<pre><code>## Call: survfit(formula = Surv(time, status) ~ 1, data = d)
+## 
+##  time n.risk n.event survival std.err lower 95% CI upper 95% CI
+##     1     10       3     0.70   0.145       0.4665        1.000
+##     2      7       1     0.60   0.155       0.3617        0.995
+##     3      5       1     0.48   0.164       0.2458        0.938
+##     7      2       1     0.24   0.188       0.0515        1.000</code></pre>
+<p>Now you can be sure, our calculations were correct and you have successfully learned how to do survival analysis. Congrats! So that from now on you can start using software. It has a lot of advantages! For instance, a <code>summary</code> function, which only displays the result of dead cases, can be filled with an additional argument <code>censored = TRUE</code>, which displays all, dead and censored cases:</p>
+<pre class="r"><code>summary(survival_model, censored = T)</code></pre>
+<pre><code>## Call: survfit(formula = Surv(time, status) ~ 1, data = d)
+## 
+##  time n.risk n.event survival std.err lower 95% CI upper 95% CI
+##     1     10       3     0.70   0.145       0.4665        1.000
+##     2      7       1     0.60   0.155       0.3617        0.995
+##     3      5       1     0.48   0.164       0.2458        0.938
+##     4      4       0     0.48   0.164       0.2458        0.938
+##     5      3       0     0.48   0.164       0.2458        0.938
+##     7      2       1     0.24   0.188       0.0515        1.000
+##    10      1       0     0.24   0.188       0.0515        1.000</code></pre>
+<p>Great! Right? But what if you have thousands of days (your table would be huge!), but you are interested in only a few of them? Well, you can specify the results of which day you want to see by adding a <code>times = ...</code> argument to the <code>summary</code> function. A cool 😎 thing about it is that you can even ask for the days, where no data were available for, e.g. day 8 or 9 in our simple example. For instance, the probability of survival beyond day 8 is 24%:</p>
+<pre class="r"><code>summary(survival_model, times = c(8, 9))</code></pre>
+<pre><code>## Call: survfit(formula = Surv(time, status) ~ 1, data = d)
+## 
+##  time n.risk n.event survival std.err lower 95% CI upper 95% CI
+##     8      1       6     0.24   0.188       0.0515            1
+##     9      1       0     0.24   0.188       0.0515            1</code></pre>
+<p>Now, since we know the exact probability of survival on <strong>each day</strong>, even on days we did not have the data for, we can visualize the model results. Install and load a <code>survminer</code> package to be able to execute the code below:</p>
+<pre class="r"><code># install.packages(&quot;survminer&quot;)
+library(survminer)
+
+ggsurvplot(
+  survival_model,
+  conf.int = FALSE,
+  surv.median.line = &quot;hv&quot;,
+  xlab = &quot;Days&quot;,
+  ylab = &quot;Survival probability&quot;,
+  break.time.by = 1,
+  risk.table = T
+)</code></pre>
+<p><img src="staticunnamed-chunk-15-1.png" width="672" /></p>
+<p>Despite the fact that we could have easily calculated the probabilities for every day, you’ll never do it by hand. It could be thousands of day. Thus, you’ll let the software do the work and you’ll get much more results then you can and want calculate yourself, e.g. confidence intervals (CIs) for everyday survival or the survival plot. The CIs are visualized per default, but we can remove them if needed via the <code>conf.int = FALSE</code> command. The last row in the code above displays a “Number at risk” table, which we also calculated manually above. So, why did we calculate something manually at all then, if we can get everything and more from the software? Well, it was important to go through the calculation process step-by-step in order to increase your intuition about the survival analysis curve!</p>
+<p>Interestingly, this curve was independently described by two different scientists at the same time. Edward Kaplan and Paul Meier then published their findings together as the <strong>Kaplan-Meier (KM) estimator </strong> in 1958.<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a> And <code>survfit</code> function fits <code>type = "kaplan-meier"</code> curve by default.</p>
+<p>Most of the survival data shows a lot of events in the beginning and lower number of events throughout the time. This makes the survival curve non-linear and most the survival data skewed or non-normally (not bell shaped) distributed. These are the reasons why KM method estimates <strong>median survival time</strong> instead of the mean as a measure of central tendency. The non-linearity and the “stepiness” of the KM curve make it <strong>impossible</strong> to summarize the data into one single <strong>parameter</strong>, e.g. the <strong>slope</strong>, which makes the KM method <strong>non-parametric</strong>.</p>
+<div id="interpretation-of-kaplan-meier-curve" class="section level3">
+<h3>Interpretation of Kaplan-Meier Curve</h3>
+<p>The <strong>x-axis</strong> represents time in days, and the <strong>y-axis</strong> shows the probability of surviving or the proportion of people surviving. So, the <strong>curve itself</strong> shows the exact <strong>survival probability over time</strong>. A <strong>vertical drop</strong> in the curve indicates at least one <strong>event</strong>. The <strong>height of a vertical drop</strong> shows the change in cumulative survival probability. A <strong>horizontal part</strong> of the curve represents survival duration for the <strong>certain time interval</strong>, which is terminated by the next event (and drop of the curve). The KM curve looks like a strange <strong>staircase</strong> with uneven <strong>steps</strong>, where survival probability is constant between the events, and is therefore a <strong>step function</strong> that changes value only at the time of each event. In this way each patient contributes valuable information to the calculations for as long as it is alive. <strong>Censored</strong> people are shown exactly like in the survival object, with <strong>pluses</strong>, as you can see on the day 2. However, most of the pluses look like <strong>vertical ticks</strong>, since they lie on the horizontal part of the curve, i.e. days 4 and 5. The tick marks are shown by default, but could be suppressed using the argument <code>censor = FALSE</code>. The <strong>risk table below the plot</strong> shows the <strong>number of people at risk</strong>, which are actually <strong>all “really alive” people in the experiment</strong> which did not experience the event or censoring at a particular time point. <strong>Dashed line</strong> represents the <strong>median survival time</strong> which corresponds to a <strong>survival probability of 50%</strong>. And if we ignore censoring and simply estimate the median of time (for only dead people), we’ll get 1.5 instead of 3, which will increase the survival provability from 48% to 70%. Again, ignoring censoring will result into overestimation of survival probability due to a survivorship bias.</p>
+<pre class="r"><code>d %&gt;%
+  filter(status == 1) %&gt;%
+  summarize(median_survival_whithout_censoring = median(time))</code></pre>
+<pre><code>## # A tibble: 1 x 1
+##   median_survival_whithout_censoring
+##                                &lt;dbl&gt;
+## 1                                1.5</code></pre>
+</div>
+</div>
+<div id="comparing-survival-of-groups" class="section level2">
+<h2>Comparing survival of groups</h2>
+<div id="groups" class="section level3">
+<h3>2 groups</h3>
+<p>Now, let’s follow 100 people after Titanic crash instead of 10 and look at their survival using the Kaplan-Meier curve below. The numbers in the risk table are getting bigger and we’d better display the percentages at risk in brackets near the absolute values. The <code>risk.table = "abs_pct"</code> argument helps with that. The “round” example of 100 people gives us exactly the same percentages as the absolute numbers, however with a less “round” number or several groups the percentages would become very useful. The median survival time of people in the cold ocean is around 70 days and the confidence intervals aren’t very wide, so that we can be pretty confident in our numbers:</p>
+<pre class="r"><code>set.seed(999) # for reproducible example
+d &lt;- ggstatsplot::Titanic_full %&gt;%
+  mutate(survived = ifelse(Survived == &quot;No&quot;, 1, 0),
+         time     = runif(n=2201, min=1, max=100)) %&gt;%
+  sample_n(100)
+
+m &lt;- survfit(Surv(time, survived) ~ 1, data = d)
+
+ggsurvplot(m,
+           conf.int = TRUE,
+           risk.table = &quot;abs_pct&quot;,
+           surv.median.line = &quot;hv&quot;)</code></pre>
+<p><img src="staticunnamed-chunk-17-1.png" width="672" /></p>
+<p>But can we have two survival curves on the same plot and compare them somehow? Of coarse! In fact, that is the moment where the fun starts. For instance, we can compare survival probabilities of males vs. females. For this we only need to replace <code>~1</code> in the model formula with the name of a categorical variable of interest, e.g. <code>sex</code>. Survival plot then displays a Kaplan-Meier curve for every category of your variable:</p>
+<pre class="r"><code>m &lt;- survfit(Surv(time, survived) ~ Sex, data = d)
+
+ggsurvplot(m,
+           pval = TRUE,
+           conf.int = TRUE,
+           risk.table = &quot;abs_pct&quot;,
+           surv.median.line = &quot;hv&quot;)</code></pre>
+<p><img src="staticunnamed-chunk-18-1.png" width="672" /></p>
+</div>
+<div id="interpretation-of-groups-comparison-using-4-benchmarks" class="section level3">
+<h3>Interpretation of groups comparison using 4 benchmarks</h3>
+<ol style="list-style-type: decimal">
+<li><p>the <strong>visual comparison of curves</strong>: just by looking at two groups we can say whether there is a difference. For instance, our plot reveals that females have higher probability of survival almost thought the whole time period (x-axes). However, <strong>whether this difference is statistically significant requires a formal statistical test</strong>. We could go further and look at the numbers of the curve, for instance: at the sunny and beautiful day before the crush, the survival probability of both groups is 1.0 (or 100% of the passengers are alive). At day 50, the probability of survival of females is ca. 0.75 (or 75%) and only ca. 0.65 (or 65%) for males. At day 75, the survival is ca. 60 and ca. 30% accordingly.</p></li>
+<li><p>comparison of <strong>confidence intervals (CIs)</strong>: overlapping CIs show that survival of males and females is not too different and could be due to chance all the way to ca. 80 days. After 80 days CIs stop overlapping which suggests significant difference in survival at a particular time point, say 90 days.</p></li>
+<li><p>estimated <strong>median survival times</strong> reveals more then confidence intervals. The median survival time for each group represents the <strong>time at which the survival probability</strong> is 50%. For instance the median survival of Females is much higher (87 days) then males (65 days). Such a huge difference of 23 days sounds significant to me, because females have 23 more days to be found by some fishing boat. Here again, only test can tell and that is why the last benchmark for comparing two groups is the <strong>p-value</strong> estimated by a <strong>Log-Rank test</strong> (Peto et al, 1977), which is so important, that it deserves an extra chapter.</p></li>
+</ol>
+<pre class="r"><code>m</code></pre>
+<pre><code>## Call: survfit(formula = Surv(time, survived) ~ Sex, data = d)
+## 
+##             n events median 0.95LCL 0.95UCL
+## Sex=Female 31     10   87.0    60.9      NA
+## Sex=Male   69     54   64.5    53.6    72.9</code></pre>
+</div>
+<div id="log-rank-test" class="section level3">
+<h3>Log-Rank test</h3>
+<ol start="4" style="list-style-type: decimal">
+<li>A <strong>non-parametric Log-Rank</strong> (sometimes called Mantel-Haenszel) statistical test compares median survival times of groups. Log-Rank test is similar to a (1) non-parametric <em>Wilcoxon-Rank</em> test, which also compares medians using ranks and it is also similar to a (2) Chi-square test, where we compare the observed number of events to the expected ones by calculating Chi-square statistic:</li>
+</ol>
+<p><span class="math display">\[ X^2 = \sum_{i = 1}^{g} \frac{(O_i - E_i)^2}{E_i}\]</span></p>
+<p>The expected numbers of events are calculated for <strong>each time point and each group</strong> as compared to the previous time point. These values are then summed over all time points to give the total expected number of events in each group.</p>
+<p>The non-parametric nature of the test makes <strong>no assumptions about the survival distributions</strong>. So, is survival time normal (“bell curvy”)? It can be, but does not have to! In fact, survival data are <strong>very rarely normally distributed</strong>, but are often skewed due to a <strong>typically many early events and relatively few late ones</strong>.</p>
+<p>The <strong>null hypothesis</strong> of the Log-Rank test is that there is <strong>no difference in survival between the two groups</strong>. The p-value of 0.011 allows us to <strong>reject the null hypothesis and indicates a significant median difference in survival time between females and males.</strong></p>
+<p>The Log-Rank test is soo widely used for comparing two or more survival curves, that you actually have to heavily justify the usage of any other test.</p>
+<p>The function <code>survdiff()</code> computes Log-Rank test and returns following components:</p>
+<ul>
+<li>the <strong>number</strong> of subjects in each group.</li>
+<li>the weighted <strong>observed</strong> number of events in each group.</li>
+<li>the weighted <strong>expected</strong> number of events in each group.</li>
+<li>the <strong>Chi-square statistic</strong> for a test of equality</li>
+<li>and the <strong>p-value</strong> for the difference in survival among the groups</li>
+</ul>
+<pre class="r"><code>survdiff(Surv(time, survived) ~ Sex, data = d)</code></pre>
+<pre><code>## Call:
+## survdiff(formula = Surv(time, survived) ~ Sex, data = d)
+## 
+##             N Observed Expected (O-E)^2/E (O-E)^2/V
+## Sex=Female 31       10     19.3      4.45      6.46
+## Sex=Male   69       54     44.7      1.92      6.46
+## 
+##  Chisq= 6.5  on 1 degrees of freedom, p= 0.01</code></pre>
+<p>Is the Log-Rank test perfect? Unfortunately, no. One problem is: it <strong>does not provide an effect size</strong> which leaves us with only p-value as a measure of difference. Another problem with Log-Rank test (and Kaplan-Meier method in general) is that it <strong>does not allow confounders</strong>, it ignores other factors/variables. Fortunately, we still can compare more then two groups of a single variable 😉.</p>
+</div>
+<div id="groups-and-multiple-pairwise-post-hoc-log-rank-test" class="section level3">
+<h3>&gt; 2 groups and multiple pairwise (post-hoc) Log-Rank test</h3>
+<p>Log-Rank test can compare more then two groups and say whether there is a significant (p-value &lt; 0.05) difference among these groups. The test results displayed in the table and KM curve below show that there is a significant difference in survival (p-value = 0.024) among groups of people in different ticket classes. However, like the most other tests (e.g. ANOVA) it does not say between which groups exactly. That is why we need an additional analysis which pairwisely compares each group to each other group. Such analysis is often called a <strong>post-hoc</strong>.</p>
+<pre class="r"><code>survdiff(Surv(time, survived) ~ Class, data = d)</code></pre>
+<pre><code>## Call:
+## survdiff(formula = Surv(time, survived) ~ Class, data = d)
+## 
+##             N Observed Expected (O-E)^2/E (O-E)^2/V
+## Class=1st  14        4    11.03     4.477     5.532
+## Class=2nd  13        5     8.49     1.432     1.666
+## Class=3rd  37       30    21.81     3.074     4.760
+## Class=Crew 36       25    22.68     0.238     0.383
+## 
+##  Chisq= 9.5  on 3 degrees of freedom, p= 0.02</code></pre>
+<pre class="r"><code>m &lt;- survfit(Surv(time, survived) ~ Class, data = d)
+
+ggsurvplot(m,
+           pval = TRUE,
+           conf.int = FALSE,
+           risk.table = &quot;abs_pct&quot;,
+           surv.median.line = &quot;hv&quot;,
+           ncensor.plot = TRUE,
+           break.time.by = 20,
+           risk.table.y.text.col = TRUE, risk.table.y.text = FALSE)</code></pre>
+<p><img src="staticunnamed-chunk-21-1.png" width="864" /></p>
+<p>Three further useful plot arguments which can help to better visualize survival data are:</p>
+<ul>
+<li><code>break.time.by = 20</code> break the x-axis into wishful time intervals.</li>
+<li><code>risk.table.y.text.col = TRUE</code> and <code>risk.table.y.text = FALSE</code> plots bars instead of names in text annotations of the legend of risk table</li>
+<li><code>ncensor.plot = TRUE</code> displays the number of censored subjects, which helps to understand what is the cause that the risk number becomes smaller: the event or censoring.</li>
+</ul>
+<p><strong>Interpretation</strong></p>
+<p>The <strong>median survival</strong> is ca. 90 days for the passengers in the 1st and 2nd classes, 58 days for the 3rd class and 65 days for the crew of the Titanic, suggesting a good survival of rich people, as compared to the rest. A <strong>low p-value (p = 0.024) suggests that there is a significant difference in survival among groups</strong>. Among which, only post-hoc can tell. The results of such <strong>post-hoc Log-Rank analysis</strong> can be conducted with <code>pairwise_survdiff</code> function form the <code>survminer</code> package and are displayed below. As usual, if we have <strong>multiple comparisons</strong>, we run into a risk of making a false discovery or missing an important discovery. Thus, we have to <strong>adjust the p-values</strong> in order to reduce the probability of making an error. I personally prefer the <strong>Benjamini &amp; Hochberg (1995) adjustment</strong> method to the famous but conservative <strong>Bonferroni</strong> method:</p>
+<pre class="r"><code>pairwise_survdiff(
+  formula = Surv(time, survived) ~ Class, data = d, p.adjust.method = &quot;fdr&quot;
+  )</code></pre>
+<pre><code>## 
+##  Pairwise comparisons using Log-Rank test 
+## 
+## data:  d and Class 
+## 
+##      1st   2nd   3rd  
+## 2nd  0.414 -     -    
+## 3rd  0.028 0.139 -    
+## Crew 0.095 0.317 0.414
+## 
+## P value adjustment method: fdr</code></pre>
+<p>The results of the post-hoc analysis revealed that the survival of the 1st class is significantly higher as compared to the 3rd class and the Crew. And despite the fact that the median survival of the 2nd class passengers is very similar to the first, the confidence intervals of this survival are wide and do overlap with other groups a lot (not shown to avoid clutterness). That is why the 2nd class passengers do not <em>generally</em> have significantly higher survival time despite much higher <em>median</em> survival time.</p>
+</div>
+<div id="multiple-survival-curves" class="section level3">
+<h3>Multiple survival curves</h3>
+<p>As mentioned above, the Log-Rank test can not be applied to several variables. However, we still can plot survival curves of several variables in order to get some intuition for our data. Further methods, e.g. Cox models, are able to estimate difference among several variables, but they are more complex than the KM-method and thus will be covered in future posts.</p>
+<pre class="r"><code>m2 &lt;- survfit( Surv(time, survived) ~ Sex + Class, data = d )
+
+ggsurv &lt;- ggsurvplot(m2, conf.int = TRUE)
+
+ggsurv$plot +theme_bw() +
+  theme (legend.position = &quot;right&quot;)+
+  facet_grid(Sex ~ .)</code></pre>
+<p><img src="staticunnamed-chunk-23-1.png" width="672" /></p>
+<p>The intuition we can get from the plots above is that rich women (1st and 2nd ticket classes) and (only 2) women from the crew have 100% probability of survival, while pure women in the 3rd class will die with a similar certainty as men. Heavily overlapping CIs of men survival suggests that all man will eventually die after the Titanic accident.</p>
+</div>
+</div>
+<div id="conclusions" class="section level2">
+<h2>Conclusions</h2>
+<p>Survival analysis investigates the <strong>time it takes for an event of interest</strong> to occur. Most of the univariate (single variable) survival analyses uses <strong>Kaplan-Meier plots</strong> to visualize the survival curves and <strong>Log-Rank test</strong> to compare the survival curves of two or more groups.</p>
+<ul>
+<li><strong>Advantages</strong>:</li>
+</ul>
+<ol style="list-style-type: decimal">
+<li><p>The crucial <strong>advantage</strong> of survival probability curve vs. logistic regression curve is accounting for censored data, which are neither dead, nor alive. Logistic regression treats all the people who didn’t die as survived, which is wrong, simply because we don’t know the survival status of a missed person. Patients leave the study due to two main reasons, they either fill so bad, that they don’t care about your experiment anymore, or they feel much better and forget your study. Some patients may simply move to the other city without saying anything. Counting all of them as survived, as logistic regression does, would overestimate the survival probability (survivorship bias) and underestimate the hazard of death. The survival analysis is therefore more precise as compared to a logistic regression, while it still catches a non-linear trend in probabilities.</p></li>
+<li><p>Another <strong>advantage</strong> is the non-parametric nature of the Kaplan-Meier method, which does not have too many assumptions. In fact the only important <strong>assumption</strong> is that <strong>censoring should be non-informative</strong>. Why? More information is always better, right? Yes! But if we know why people leave the study, we could use this information as a new variable and study it’s influence on survival. The KM method would then be inappropriate, because it will miss this information. However, often we don’t know (no-info) why people leave (are censored). And in this case the KM-method squeezes the most inference out of such non-informative data.</p></li>
+</ol>
+<ul>
+<li><strong>Disadvantages</strong>:</li>
+</ul>
+<ol style="list-style-type: decimal">
+<li><p>The Kaplan-Meier “curve” does not actually look like a curve. Oppositely to the logistic regression Kaplan-Meier method <strong>can not be described as a smooth function (curve) by a few parameters, e.g. the slope or odds-ratio</strong>. That is why we need the fool table of results or a graph.</p></li>
+<li><p>Kaplan-Meier method <strong>can’t model numeric variables</strong>, but only categorical.</p></li>
+<li><p>Kaplan-Meier method <strong>can’t include many explanatory variables</strong>. It’s bad, because comparing groups in terms of survival may miss the effect of <strong>other factors, known as covariates or confounders, which could potentially affect the survival time of a particular group</strong>.</p></li>
+</ol>
+<ul>
+<li><strong>Recommendations</strong>:</li>
+</ul>
+<ol style="list-style-type: decimal">
+<li><p>always <strong>display statistical uncertainty</strong> by including 95% CIs or/and a p-value of the Log-Rank test. Displaying CIs at a few important time points on the plot for each
+treatment group may sometimes be clearer then displaying them for all time points. Non-overlapping CIs indicate significant difference between groups.</p></li>
+<li><p><strong>consider cutting the x-axis</strong>. Why? Well, the eye is naturally drawn to the right part of the plot, where the time ends. However, the end of the plot contains the least amount of information and greatest uncertainty due to just a low number of remaining participants. How far in time to extend the plot? It’s up to you.</p></li>
+<li><p>always <strong>display the risk table</strong> showing the numbers of patients event-free and still in follow-up in each treatment group at relevant time points.</p></li>
+</ol>
+</div>
+<div id="whats-next" class="section level2">
+<h2>What’s next?</h2>
+<p>Several methods can address the disadvantages of the Kaplan-Meier method. Particularly, <a href="https://yury-zablotski.netlify.com/post/survival-2/"><strong>exponential parametric models</strong></a> provide a smooth function which is able to describe the <em>survival curve</em> as an actual <em>curve</em> in a few parameters, like slope (that’s why - parametric). And <strong>Cox-Proportional-Hazard model</strong> can be extended to several variables (in progress).</p>
+<p>If you think, I missed something, please comment on it, and I’ll improve this tutorial.</p>
+<p><strong>Thank you for learning!</strong></p>
+</div>
+<div id="further-readings-videos-and-references" class="section level2">
+<h2>Further readings, videos and references</h2>
+<ul>
+<li><p>Clark, T., Bradburn, M., Love, S., &amp; Altman, D. (2003). Survival analysis part I: Basic concepts and first analyses. 232-238. ISSN 0007-0920.</p></li>
+<li><p>the whole playlist of videos from MarinStatsLectures! They are amazing! <a href="https://www.youtube.com/watch?v=vX3l36ptrTU&amp;list=PLqzoL9-eJTNDdnKvep_YHIwk2AMqHhuJ0" class="uri">https://www.youtube.com/watch?v=vX3l36ptrTU&amp;list=PLqzoL9-eJTNDdnKvep_YHIwk2AMqHhuJ0</a></p></li>
+<li><p><code>survminer</code> cheat sheet: <a href="https://rpkgs.datanovia.com/survminer/survminer_cheatsheet.pdf" class="uri">https://rpkgs.datanovia.com/survminer/survminer_cheatsheet.pdf</a></p></li>
+<li><p><a href="https://www.emilyzabor.com/tutorials/survival_analysis_in_r_tutorial.html#part_1:_introduction_to_survival_analysis" class="uri">https://www.emilyzabor.com/tutorials/survival_analysis_in_r_tutorial.html#part_1:_introduction_to_survival_analysis</a></p></li>
+</ul>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p>Kaplan, E.L. and Meier, P. (1958) Nonparametric Estimation from Incomplete Observations. Journal of the American Statistical Association, 53, 457-481.
+<a href="http://dx.doi.org/10.1080/01621459.1958.10501452" class="uri">http://dx.doi.org/10.1080/01621459.1958.10501452</a><a href="#fnref1" class="footnote-back">↩︎</a></p></li>
+</ol>
+</div>
