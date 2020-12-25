@@ -1,0 +1,31 @@
+---
+title: ''
+author: Yury Zablotski
+date: '2020-12-25'
+slug: ''
+categories:
+  - R
+tags:
+  - R Demo
+subtitle: ''
+summary: ''
+authors: []
+lastmod: '2020-12-25T16:15:18+01:00'
+featured: no
+image:
+  caption: ''
+  focal_point: ''
+  preview_only: no
+projects: []
+---
+
+
+The first post with some analysis
+
+```{r}
+library(tidyverse)
+ggplot(mtcars, aes(mpg, hp))+
+  geom_point()+
+  geom_smooth()
+```
+
